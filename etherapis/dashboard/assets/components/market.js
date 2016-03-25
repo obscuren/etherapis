@@ -45,7 +45,7 @@ var Market = React.createClass({
 					<tbody>
 						{this.state.services.map(function(service, i) {
 							return (
-								<MarketItem key={"market-item-"+i} name={service.name} ajax={this.props.ajax} service={service}/>
+								<MarketItem account={this.props.account} key={"market-item-"+i} name={service.name} apiurl={this.props.apiurl} ajax={this.props.ajax} service={service}/>
 							);
 						}.bind(this))}
 					</tbody>
@@ -57,6 +57,32 @@ var Market = React.createClass({
 window.Market = Market;
 
 var MarketItem = React.createClass({
+	getInitialState: function() {
+		return { 
+			working: false,
+			subscribed: false,
+			failure: null,
+		};
+	},
+
+	subscribe: function(ev) {
+		this.setState({working: true});
+
+		var form = new FormData();
+		form.append("sender", this.props.account);
+		form.append("serviceId", this.props.service.serviceId);
+
+		$.ajax({type: "POST", url: this.props.apiurl + "/subscriptions", data: form,  cache: false, processData: false, contentType: false, dataType: 'json',
+			success: function(data) {
+				console.log(data);
+				this.setState({working: false, subscribed: true});
+			}.bind(this),
+			error: function(xhr, status, err) {
+				this.setState({working: false, failure: xhr.responseText});
+			}.bind(this),
+		});
+	},
+
 	render: function() {
 		return (
 			<tr>
@@ -65,18 +91,13 @@ var MarketItem = React.createClass({
 				<td>{this.props.service.owner}</td>
 				<td>{this.props.service.price}</td>
 				<td>{this.props.service.cancellationTime}</td>
-				<td><Subscribe/></td>
+				<td>
+					<button disabled={this.state.working} type="submit" onClick={this.subscribe} className="btn btn-default">
+						{ this.state.working ? <i className="fa fa-spinner fa-spin"></i> : null} Subscribe
+					</button>
+				</td>
 			</tr>
 		);
 	},
 });
 
-var Subscribe = React.createClass({
-	render: function() {
-		return (
-			<button type="button" className="btn btn-default btn-xs right">
-				<span className="glyphicon glyphicon-plus" aria-hidden="true"></span> Subscribe
-			</button>
-		);
-	}
-});

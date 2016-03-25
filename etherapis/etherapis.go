@@ -193,6 +193,15 @@ func (eapis *EtherAPIs) RetrieveAccount(account common.Address) Account {
 	}
 }
 
+// GetPrivateKey returns the private key associated with the account.
+func (eapis *EtherAPIs) GetPrivateKey(account common.Address) (*crypto.Key, error) {
+	return eapis.client.Keystore().GetKey(account, eapis.password)
+}
+
+func (eapis *EtherAPIs) SubmitTx(tx *types.Transaction) error {
+	return eapis.ethereum.TxPool().Add(tx)
+}
+
 // ListAccounts retrieves the list of accounts known to etherapis.
 func (eapis *EtherAPIs) ListAccounts() ([]common.Address, error) {
 	accounts, err := eapis.ethereum.AccountManager().Accounts()

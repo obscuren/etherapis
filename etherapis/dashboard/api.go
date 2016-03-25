@@ -38,6 +38,7 @@ func newAPIServeMux(base string, eapis *etherapis.EtherAPIs) *mux.Router {
 	router.HandleFunc(base+"accounts/{address:0(x|X)[0-9a-fA-F]{40}}/transactions", handler.Transactions)
 	router.HandleFunc(base+"services/{address:0(x|X)[0-9a-fA-F]{40}}", handler.Services)
 	router.HandleFunc(base+"subscriptions/{address}", handler.Subscriptions)
+	router.HandleFunc(base+"subscriptions", handler.Subscriptions)
 
 	return router
 }
@@ -45,28 +46,77 @@ func newAPIServeMux(base string, eapis *etherapis.EtherAPIs) *mux.Router {
 // Subscriptions retrieves the given address' subscriptions.
 func (a *api) Subscriptions(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	addr, exist := vars["address"]
-	if !exist {
-		log15.Error("Failed to retrieve subscriptions", "error", "no address specified")
-		http.Error(w, "no address specified", http.StatusInternalServerError)
-		return
-	}
 
-	services, err := a.eapis.Contract().Subscriptions(common.HexToAddress(addr))
-	if err != nil {
-		log15.Error("Failed to retrieve subscriptions", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	switch {
+	case r.Method == "GET":
+		addr, exist := vars["address"]
+		if !exist {
+			log15.Error("failed to retrieve subscriptions", "error", "no address specified")
+			http.Error(w, "no address specified", http.StatusInternalServerError)
+			return
+		}
 
-	out, err := json.Marshal(services)
-	if err != nil {
-		log15.Error("Failed to marshal subscriptions", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+		services, err := a.eapis.Contract().Subscriptions(common.HexToAddress(addr))
+		if err != nil {
+			log15.Error("failed to retrieve subscriptions", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	w.Write(out)
+		out, err := json.Marshal(services)
+		if err != nil {
+			log15.Error("failed to marshal subscriptions", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(out)
+
+	case r.Method == "POST":
+		var (
+			sender    = common.HexToAddress(r.FormValue("sender"))
+			serviceId = common.String2Big(r.FormValue("serviceId"))
+			api       = a.eapis.Contract()
+		)
+		log15.Info("creating new subscription", "sender", r.FormValue("sender"), "service-id", serviceId)
+
+		key, err := a.eapis.GetPrivateKey(sender)
+		if err != nil {
+			log15.Error("failed retrieving sender key", "sender", sender, "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		done := make(chan struct{})
+		tx, err := api.Subscribe(key.PrivateKey, serviceId, new(big.Int).Mul(big.NewInt(10), common.Ether), func(sub *contract.Subscription) {
+			defer close(done)
+
+			out, err := json.Marshal(sub)
+			if err != nil {
+				log15.Error("failed to marshal subscription", "error", err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Write(out)
+		})
+		if err != nil {
+			close(done)
+
+			log15.Error("failed to create transaction", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		err = a.eapis.SubmitTx(tx)
+		if err != nil {
+			close(done)
+
+			log15.Error("failed to submit transaction", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// wait for subscription to be finished
+		<-done
+	}
 }
 
 // Accounts retrieves the Ethereum accounts currently configured to be used by the

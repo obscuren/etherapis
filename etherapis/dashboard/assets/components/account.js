@@ -402,6 +402,7 @@ var AccountCreator = React.createClass({
 
 		// Do a simple account creation post request
 		var form = new FormData();
+
 		form.append("action", "create");
 
 		$.ajax({type: "POST", url: this.props.apiurl, cache: false, data: form, processData: false, contentType: false,
